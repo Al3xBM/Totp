@@ -1,0 +1,91 @@
+﻿@page "/counter"
+@using System.ComponentModel.DataAnnotations;
+
+<div class="container">
+    <h1>Generate a TOTP</h1>
+
+    <EditForm Model=@userInput>
+        <DataAnnotationsValidator />
+        <div>
+            <label for="userId">User Id</label>
+            <input id="userId" type="text" placeholder="Input Id here" @bind-value=userInput.UserId class="input userId" />
+            <ValidationMessage For="() => userInput.UserId" />
+        </div>
+
+        <div>
+            <label for="date">Date</label>
+            <input id="date" type="datetime" placeholder="Date" @bind-value=userInput.TimeStamp class="input date" />
+        </div>
+
+        <input type="submit" class="btn btn-primary" @onclick="GetTotpAsync" value="Get TOTP" />
+    </EditForm>
+
+    <p style="visibility:@tokenVisibility"><b>@userInput.UserId</b>, your token is: <b>@lastTotp</b> and is valid for <b>@counter</b> seconds</p>
+</div>
+
+@code {
+    private class TotpResponse
+    {
+        public string Password { get; set; }
+    }
+
+    private class UserInput
+    {
+        [Required(ErrorMessage="User Id is required")]
+        public string UserId { get; set; }
+        [Required]
+        public DateTime TimeStamp { get; set; }
+    }
+
+    private UserInput userInput = new UserInput() { TimeStamp = DateTime.Now };
+    private string lastTotp, tokenVisibility = "hidden";
+
+    public async Task GetTotpAsync()
+    {
+        if (isTimerOn)
+            return;
+
+        var req = new Dictionary<string, dynamic>
+        {
+            { "step", 30 },
+            { "key", "ABCDEFGHIJKLMNOP" },
+            { "passwordLength", 6},
+            { "userId", userInput.UserId },
+            { "timeStamp", userInput.TimeStamp }
+        };
+
+        HttpResponseMessage res = await new HttpClient().PostAsJsonAsync($"http://localhost:57192/getTotp", req);
+        var temp = await res.Content.ReadFromJsonAsync<TotpResponse>();
+        lastTotp = temp.Password;
+
+        StartTimer();
+    }
+
+    private static System.Timers.Timer timer;
+    private static bool isTimerOn = false;
+    private int counter = 30;
+
+    public void StartTimer()
+    {
+        counter = 30;
+        timer = new System.Timers.Timer(1000);
+        timer.Elapsed += CountDownTimer;
+        timer.Enabled = true;
+        isTimerOn = true;
+        tokenVisibility = "visible";
+    }
+
+    public void CountDownTimer(Object source, System.Timers.ElapsedEventArgs e)
+    {
+        if (counter > 0)
+        {
+            counter -= 1;
+        }
+        else
+        {
+            timer.Enabled = false;
+            isTimerOn = false;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+}
